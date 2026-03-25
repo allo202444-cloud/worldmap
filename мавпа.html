@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Military Map Final Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #1a1a1a; overflow: hidden; }
+        #map { height: 100vh; width: 100%; z-index: 1; }
+
+        /* --- НИЖНИЕ КНОПКИ (ЛЕВО) --- */
+        .bottom-left-btns { position: absolute; bottom: 20px; left: 20px; z-index: 2000; display: flex; gap: 10px; align-items: flex-end; }
+        
+        .info-btn, .screenshot-btn {
+            background: white; border: none; width: 45px; height: 45px; border-radius: 50%;
+            cursor: pointer; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .screenshot-btn { background: #2c2c2c; color: white; }
+        
+        /* --- СТРЕЛКА (ПРАВО) --- */
+        .arrow-wrapper { position: absolute; bottom: 20px; right: 20px; z-index: 2000; }
+        .arrow-btn {
+            background: #2c2c2c; border: none; width: 50px; height: 50px; border-radius: 50%;
+            cursor: pointer; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .arrow-btn svg { width: 24px; fill: #888; transition: 0.5s; transform: rotate(180deg); }
+
+        /* --- ВЕРХНЕЕ МЕНЮ (ПАНЕЛИ) --- */
+        .ui-top-container {
+            position: absolute; top: 15px; right: 15px; z-index: 1000;
+            display: flex; flex-direction: column; width: 320px;
+        }
+        .tools-panel {
+            background: #2c2c2c; color: white; border-radius: 20px;
+            padding: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            margin-bottom: 10px; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        /* ВОЗВРАЩЕННЫЙ ВИД СТАТИСТИКИ */
+        .stats-panel {
+            background: #333; color: white; border-radius: 20px;
+            padding: 10px 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: space-between; font-size: 13px;
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .tool-item { display: flex; align-items: center; cursor: pointer; padding: 6px 12px; border-radius: 12px; transition: 0.3s; }
+        .tool-item.active { background: #ff4444; color: white; }
+
+        /* Скрытие меню */
+        .is-closed .tools-panel { transform: translateY(-50px) scaleY(0); opacity: 0; pointer-events: none; margin-bottom: -55px; }
+        .is-closed .arrow-btn svg { transform: rotate(0deg); }
+
+        /* --- СКРИНШОТ ОВЕРЛЕЙ --- */
+        #screenshotOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); z-index: 9999;
+            display: none; justify-content: center; align-items: center;
+        }
+        #customAlert {
+            background: #2c2c2c; color: white; padding: 30px; border-radius: 25px;
+            width: 320px; position: relative; text-align: center;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8); border: 1px solid #444;
+        }
+        #customAlert h4 { margin: 0; font-size: 20px; font-weight: bold; }
+        #customAlert .line { width: 100%; height: 1px; background: #444; margin: 15px 0; }
+        #customAlert p { margin: 0; font-size: 14px; color: #bbb; }
+        .close-alert {
+            position: absolute; top: 12px; right: 12px; background: #1a1a1a;
+            color: #888; border: none; width: 30px; height: 30px; border-radius: 50%;
+            cursor: pointer; display: flex; justify-content: center; align-items: center;
+        }
+
+        /* --- ИНФО-ОКНО (yvaha.png) --- */
+        .info-popup {
+            position: absolute; bottom: 60px; left: 0; background: rgba(44, 44, 44, 0.95);
+            color: white; padding: 12px 18px; border-radius: 15px; width: 280px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); display: none; align-items: center;
+            font-size: 13px; line-height: 1.4; border: 1px solid #444;
+        }
+        .info-popup.show { display: flex; }
+
+        /* --- ИКОНКИ --- */
+        .icon { width: 20px; height: 20px; margin-right: 6px; object-fit: contain; }
+        .divider { color: #555; margin: 0 8px; font-weight: bold; }
+        .shahed-wrapper { display: flex; align-items: center; justify-content: center; }
+        .shahed-img { width: 40px; height: 40px; object-fit: contain; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="screenshotOverlay">
+    <div id="customAlert">
+        <button class="close-alert" onclick="closeAlert()">×</button>
+        <h4>СКРІНШОТ ЗРОБЛЕНО</h4>
+        <div class="line"></div>
+        <p>Скріншот успішно створено<br>та збережено до вашої галереї</p>
+    </div>
+</div>
+
+<div class="bottom-left-btns">
+    <div class="info-popup" id="infoBox">
+        <img src="yvaha.png" class="icon" style="width:25px; height:25px;">
+        <span>Ідея карти заснована на телеграм-каналах <br><b>@skykh_info @controlpoltava</b></span>
+    </div>
+    <button class="info-btn" onclick="document.getElementById('infoBox').classList.toggle('show')">
+        <img src="iconka.png" style="width:25px; height:25px;">
+    </button>
+    <button class="screenshot-btn" id="shotBtn" onclick="takeScreenshot()">
+        <span style="font-size: 20px;">📸</span>
+    </button>
+</div>
+
+<div class="arrow-wrapper">
+    <button class="arrow-btn" onclick="document.body.classList.toggle('is-closed')">
+        <svg viewBox="0 0 24 24"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
+    </button>
+</div>
+
+<div class="ui-top-container">
+    <div class="tools-panel" id="tools">
+        <div class="tool-item" id="add-btn" onclick="setMode('add')">
+            <img src="shhd.png" class="icon">
+            <span style="font-weight: bold;">ШАХЕД</span>
+        </div>
+        <div style="width: 1px; height: 20px; background: #444;"></div>
+        <div class="tool-item" id="del-btn" onclick="setMode('del')">
+            <span style="font-size: 18px; margin-right: 8px;">🗑️</span>
+            <span style="font-weight: bold;">УДАЛИТЬ</span>
+        </div>
+        <div style="width: 1px; height: 20px; background: #444;"></div>
+        <div class="tool-item" onclick="removeAllMarkers()">
+            <span style="font-weight: bold;">У</span>
+        </div>
+    </div>
+
+    <div class="stats-panel">
+        <div style="display: flex; align-items: center;">
+            <img src="vremya.png" class="icon">
+            <span id="clock" style="font-weight: bold; min-width: 60px;">00:00:00</span>
+        </div>
+        <span class="divider">|</span>
+        <div style="display: flex; align-items: center;">
+            <img src="cheli.png" class="icon">
+            <span>Цілей: <b id="count-targets">0</b></span>
+            <span class="divider"></span>
+            <span>Шахедів: <b id="count-shhds">0</b></span>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([50.45, 30.52], 10);
+    L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3'] }).addTo(map);
+
+    let currentMode = 'none', selectedMarker = null, markerCount = 0;
+    const markersGroup = L.layerGroup().addTo(map);
+
+    function setMode(mode) {
+        if (currentMode === mode) currentMode = 'none';
+        else currentMode = mode;
+        document.getElementById('add-btn').classList.toggle('active', currentMode === 'add');
+        document.getElementById('del-btn').classList.toggle('active', currentMode === 'del');
+    }
+
+    function removeAllMarkers() {
+        if (markerCount === 0) return;
+        if (confirm("Видалити всі цілі?")) {
+            markersGroup.clearLayers();
+            markerCount = 0;
+            updateUI();
+        }
+    }
+
+    map.on('click', function(e) {
+        if (currentMode === 'add') { createMarker(e.latlng); setMode('none'); }
+        else if (selectedMarker) { rotateMarker(selectedMarker, e.latlng); selectedMarker = null; }
+    });
+
+    function createMarker(latlng) {
+        const icon = L.divIcon({
+            className: 'shahed-wrapper',
+            html: `<img src="shhd.png" class="shahed-img" style="transform: rotate(0deg);">`,
+            iconSize: [40, 40], iconAnchor: [20, 20]
+        });
+        const marker = L.marker(latlng, { icon: icon }).addTo(markersGroup);
+        marker.angle = 0; markerCount++; updateUI();
+        marker.on('click', function(ev) {
+            L.DomEvent.stopPropagation(ev);
+            if (currentMode === 'del') { markersGroup.removeLayer(marker); markerCount--; updateUI(); setMode('none'); }
+            else { selectedMarker = marker; }
+        });
+    }
+
+    function rotateMarker(marker, target) {
+        const mPos = map.latLngToLayerPoint(marker.getLatLng()), cPos = map.latLngToLayerPoint(target);
+        const angle = Math.atan2(cPos.y - mPos.y, cPos.x - mPos.x) * 180 / Math.PI + 90;
+        marker.angle = angle;
+        marker._icon.querySelector('img').style.transform = `rotate(${angle}deg)`;
+    }
+
+    map.on('zoomend viewreset moveend', () => {
+        markersGroup.eachLayer(l => { if (l.angle !== undefined) l._icon.querySelector('img').style.transform = `rotate(${l.angle}deg)`; });
+    });
+
+    function takeScreenshot() {
+        const btn = document.getElementById('shotBtn');
+        btn.style.visibility = 'hidden';
+        html2canvas(document.body, { useCORS: true, allowTaint: false }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = Math.random().toString(36).substring(2, 12).toUpperCase() + '.png';
+            link.href = canvas.toDataURL();
+            link.click();
+            document.getElementById('screenshotOverlay').style.display = 'flex';
+        }).finally(() => { btn.style.visibility = 'visible'; });
+    }
+
+    function closeAlert() { document.getElementById('screenshotOverlay').style.display = 'none'; }
+    function updateUI() { 
+        document.getElementById('count-shhds').innerText = markerCount; 
+        document.getElementById('count-targets').innerText = markerCount; 
+    }
+    function updateTime() { 
+        document.getElementById('clock').innerText = new Intl.DateTimeFormat('uk-UA', { 
+            timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', second: '2-digit' 
+        }).format(new Date()); 
+    }
+    setInterval(updateTime, 1000); updateTime();
+</script>
+</body>
+</html>
